@@ -1,0 +1,7 @@
+- Encryption module
+- SSH Tunnel ??
+- Commands module
+	- get infos
+	- remote shell
+	- screenshot ??
+- Socket connexion
