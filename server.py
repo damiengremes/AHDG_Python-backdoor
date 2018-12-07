@@ -11,8 +11,13 @@ class encryption():
 
 
 class InT(threading.Thread):
-	def init(self):
+	def __init__(self):
 		pass
 
 	def connect(self):
 		pass
+
+
+
+while True:
+	pass
