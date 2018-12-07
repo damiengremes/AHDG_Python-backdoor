@@ -3,6 +3,7 @@ import time
 import threading
 import sys
 
+
 class inThread(threading.Thread):
     def __init__(self, prod_list,lock):
         super().__init__()
@@ -70,3 +71,12 @@ while not end:
 #Close session
 
 shell = input('{} > shell > '.format(ipaddr))
+
+print("Test")
+#coucou
+if len(sys.argv) < 3:
+	pass #print help
+elif len(sys.argv) == 4:
+	pass #do stuff
+else:
+	pass 
