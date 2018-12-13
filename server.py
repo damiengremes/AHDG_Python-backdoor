@@ -1,6 +1,7 @@
 import socket
 import time
 import threading
+import platform
 
 class encryption():
 	def encrypt:
@@ -17,6 +18,8 @@ class InT(threading.Thread):
 	def connect(self):
 		pass
 
+class commands:
+	def get_info(self):
 
 
 while True:
