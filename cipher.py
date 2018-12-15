@@ -18,6 +18,7 @@ remote_public_key = None
 public_key_pem = None
 private_key = None
 
+
 class AESCipher(object):
 
     def __init__(self, key): 
@@ -42,6 +43,7 @@ class AESCipher(object):
     @staticmethod
     def _unpad(s):
         return s[:-ord(s[len(s)-1:])]
+
 
 class Chat:
     """
@@ -120,7 +122,6 @@ class Chat:
         """
         self.server_socket.close()
 
-
     def generate_rsa_keys(self):
         return rsa.generate_private_key(backend=default_backend(),
                                                public_exponent=65537,
@@ -155,8 +156,6 @@ class ChatThread(Thread):
         super().__init__()
         self.quit_event = quit_event
         self.encoding = encoding
-
-
 
 
 class OutThread(ChatThread):
@@ -251,9 +250,10 @@ class InThread(ChatThread):
         self.server_sock = server_sock
         while not self.quit_event.is_set():
             try:
-                connection, origin = self.server_sock.accept()  # Should raise a timeout error after some time
+                self.connection, self.origin = self.server_sock.accept()  # Should raise a timeout error after some time
             except timeout:
                 pass  # Do nothing on timeout error and restart loop (if quit_event is not set)
+
     def run(self):
         """
         Handles incoming messages
@@ -274,13 +274,13 @@ class InThread(ChatThread):
 
     def init_public_key(self):
         try:
-            connection, origin = self.server_sock.accept()
+            self.connection, self.origin = self.server_sock.accept()
             remote_public_key_pem = connection.recv(InThread.BUFFER_SIZE)
             global remote_public_key
             remote_public_key = load_pem_public_key(remote_public_key_pem, backend=default_backend())
             print("Remote public key successfully loaded")
-            connection.shutdown(SHUT_RDWR)
-            connection.close()
+            self.connection.shutdown(SHUT_RDWR)
+            self.connection.close()
         except timeout:
             self.init_public_key()
         except ValueError:
@@ -303,6 +303,7 @@ Executable
 
 def print_help():
     pass
+
 
 if len(argv) < 3:
     print_help()
