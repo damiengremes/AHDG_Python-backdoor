@@ -81,7 +81,7 @@ class OutThread(threading.Thread):
 
         try:
             self.sock = socket.socket()
-            self.sock.connect(self.ip, self.out_port)
+            self.sock.connect((self.ip, self.out_port))
         except ConnectionError:
             print('Unable to connect to {}'.format(self.ip))
 
