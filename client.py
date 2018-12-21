@@ -33,10 +33,11 @@ class InThread(threading.Thread):
             self.socket = socket.socket()
             self.socket.bind(('', self.in_port))
             self.socket.listen(1)
+            print('listening for incoming connections')
 
             self.conn, self.in_ip = self.socket.accept()
             print('Connection received from {} on port {}'.format(self.in_ip[0], self.in_ip[1]))
-            self.init_public_key()
+            #self.init_public_key()
         except timeout:
             print('No response from {}'.format(self.ip))
 
@@ -82,10 +83,11 @@ class OutThread(threading.Thread):
         try:
             self.sock = socket.socket()
             self.sock.connect((self.ip, self.out_port))
+            print('connecting to', self.ip)
         except ConnectionError:
             print('Unable to connect to {}'.format(self.ip))
 
-        self.send_public_keys()
+        #self.send_public_keys()
 
     def run(self):
         again = True
@@ -144,13 +146,14 @@ class Malware():
         self.in_port = in_port
 
         print("Trying to reach {} on port {}".format(self.ip, self.out_port))
-        self.prod = InThread(self.in_port)
+
         self.cons = OutThread(self.ip, self.out_port)
+        self.prod = InThread(self.in_port)
 
         global private_key
         global public_key_pem
-        private_key = self.generate_rsa_keys()
-        public_key_pem = self.serialize_public_key(private_key.public_key())
+        #private_key = self.generate_rsa_keys()
+        #public_key_pem = self.serialize_public_key(private_key.public_key())
 
     def run(self):
         self.prod.start()

