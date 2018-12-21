@@ -87,7 +87,7 @@ class OutThread(threading.Thread):
 
         try:
             self.sock = socket.socket()
-            self.sock.connect((self.ip, self.out_port))
+            self.sock.connect((self.ip[0], self.out_port))
             print('trying to connect to master')
         except ConnectionError:
             print('Unable to connect to {}'.format(self.ip))
@@ -102,7 +102,7 @@ class OutThread(threading.Thread):
                 pass
             elif msg == 'exit':
                 again = False
-                send(msg)
+                self.send(msg)
             elif msg == 'shell':
                 keepalive = True
                 while keepalive:
@@ -112,7 +112,7 @@ class OutThread(threading.Thread):
                     elif shell == 'exit':
                         keepalive = False
                     else:
-                        send(shell)
+                        self.send(shell)
             elif msg == 'info':
                 send(msg)
         s.close()

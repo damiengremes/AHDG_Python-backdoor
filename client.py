@@ -88,6 +88,7 @@ class OutThread(threading.Thread):
             print('Unable to connect to {}'.format(self.ip))
 
         #self.send_public_keys()
+        self.start()
 
     def run(self):
         again = True
@@ -97,7 +98,7 @@ class OutThread(threading.Thread):
                 pass
             elif msg == 'exit':
                 again = False
-                send(msg)
+                self.send(msg)
             elif msg == 'shell':
                 keepalive = True
                 while keepalive:
@@ -107,9 +108,9 @@ class OutThread(threading.Thread):
                     elif shell == 'exit':
                         keepalive = False
                     else:
-                        send(shell)
+                        self.send(shell)
             elif msg == 'info':
-                send(msg)
+                self.send(msg)
 
 
         s.close()
