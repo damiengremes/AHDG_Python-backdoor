@@ -6,9 +6,11 @@ class get_info():
 
     def ip():
         if platform.system() == 'Windows':
-            os.system('ipconfig')
+            msg = os.popen('ipconfig').read()
+            print(msg)
         else:
-            os.system('ip addr show')
+            msg = os.popen('ip addr show').read()
+            print(msg)
     def systeme():
         print(platform.uname())
     def platforme():
@@ -24,7 +26,9 @@ class get_info():
             if commande == 'assist' :
                 print ('Shell mode, type "noshell" to quit')
             else :
-                os.system(commande)
+                msg = os.popen(commande).read()
+                #print('-')
+                print(msg)
             commande = input()
         print ('Exiting Shell mode')
 
