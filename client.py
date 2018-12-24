@@ -118,7 +118,7 @@ class OutThread(threading.Thread):
                         self.send(shell)
                     else:
                         self.send(shell)
-            elif msg == 'info':
+            elif msg[:4] == 'info':
                 self.send(msg)
             else:
                 print('List of known functions : ', ' '.join(known_commands))

