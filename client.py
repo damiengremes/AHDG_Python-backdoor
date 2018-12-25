@@ -50,14 +50,14 @@ class InThread(threading.Thread):
             if msg == 'exit':
                 again = False
             else:
-                print(msg)
+                print(self.in_ip[0], '--> ', msg)
         self.stop()
 
     def stop(self):
         #self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
 
-        print('Closed socket coming from {}'.format(self.in_ip))
+        print('Closed socket coming from {}:{}'.format(self.in_ip[0],self.in_ip[1]))
 
     def init_public_key(self):
         try:
@@ -89,7 +89,7 @@ class OutThread(threading.Thread):
         try:
             self.sock = socket.socket()
             self.sock.connect((self.ip, self.out_port))
-            print('connecting to', self.ip)
+            print('Connected to', self.ip)
         except ConnectionError:
             print('Unable to connect to {}'.format(self.ip))
 
@@ -100,6 +100,7 @@ class OutThread(threading.Thread):
         known_commands = ['exit', 'shell', 'info']
         again = True
         while again:
+            time.sleep(1)
             msg = input('{} > '.format(self.ip))
             if msg == '':
                 pass
@@ -110,6 +111,7 @@ class OutThread(threading.Thread):
                 self.send(msg)
                 keepalive = True
                 while keepalive:
+                    time.sleep(1)
                     shell = input('{} > shell > '.format(self.ip))
                     if shell == '':
                         pass

