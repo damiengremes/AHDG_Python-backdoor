@@ -85,12 +85,14 @@ class InThread(threading.Thread):
                         comm_again = False
                     else:
                         try:
-                            resp = subprocess.check_output(command.split(), shell=True)
+                            #resp = subprocess.check_output(command.split(), shell=True)
                             print(command)
-                            print(resp)
+                            #print(resp)
                             if platform.system() == 'Windows':
+                                resp = subprocess.check_output(command.split(), shell=True)
                                 cons.send(resp.decode('cp850'))
                             else:
+                                resp = subprocess.check_output(command, shell=True)
                                 cons.send(resp.decode('UTF-8'))
                         except subprocess.CalledProcessError:
                             cons.send("Impossible d'exécuter cette commande")
