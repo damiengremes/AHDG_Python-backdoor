@@ -230,3 +230,6 @@ while True:
     time.sleep(2)
     malw.join()
 
+    # Waits for socket to quit TIME_WAIT state
+    time.sleep(10)
+
