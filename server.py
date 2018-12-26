@@ -5,7 +5,14 @@ import sys
 import os
 import subprocess
 import platform
-
+import base64
+import hashlib
+import random
+import string
+from Crypto import Random
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+from Crypto.Util.Padding import unpad
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
@@ -13,9 +20,32 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
+
 remote_public_key = None
 public_key_pem = None
 private_key = None
+
+
+class AESCipher(object):
+    """
+    AES module by mnothic (https://stackoverflow.com/questions/12524994/encrypt-decrypt-using-pycrypto-aes-256)
+    Modified to use pad & unpad functions in Cryptodome
+    """
+    def __init__(self, key):
+        self.bs = 32
+        self.key = hashlib.sha256(key.encode()).digest()
+
+    def encrypt(self, raw):
+        raw = pad(raw, self.bs)
+        iv = Random.new().read(AES.block_size)
+        cipher = AES.new(self.key, AES.MODE_CBC, iv)
+        return base64.b64encode(iv + cipher.encrypt(raw))
+
+    def decrypt(self, enc):
+        enc = base64.b64decode(enc)
+        iv = enc[:AES.block_size]
+        cipher = AES.new(self.key, AES.MODE_CBC, iv)
+        return unpad(cipher.decrypt(enc[AES.block_size:]), self.bs).decode('utf-8')
 
 
 class Commands:
@@ -67,9 +97,13 @@ class InThread(threading.Thread):
         print('connection received')
         self.init_public_key(conn)
         cons = OutThread(in_ip, self.out_port)
+        remote_aeskey = self.rsa_decrypt(conn.recv(1024)).decode('UTF-8')
+        aes = AESCipher(remote_aeskey)
+        cons.aes = aes
         again = True
         while again:
-            msg = self.rsa_decrypt(conn.recv(1024)).decode('UTF-8')
+            msg = aes.decrypt(conn.recv(1024))
+            #msg = self.rsa_decrypt(conn.recv(1024)).decode('UTF-8')
             print(msg)
             if msg == 'exit':
                 again = False
@@ -77,7 +111,8 @@ class InThread(threading.Thread):
             elif msg == 'shell':
                 comm_again = True
                 while comm_again:
-                    command = self.rsa_decrypt(conn.recv(1024)).decode('UTF-8')
+                    command = aes.decrypt(conn.recv(1024))
+                    #command = self.rsa_decrypt(conn.recv(1024)).decode('UTF-8')
                     print(command)
                     if command == '':
                         pass
@@ -143,6 +178,7 @@ class OutThread(threading.Thread):
         super().__init__()
         self.ip = ip
         self.out_port = out_port
+        self.aes = None
 
         try:
             self.sock = socket.socket()
@@ -154,8 +190,9 @@ class OutThread(threading.Thread):
 
     def send(self, message):
         try:
-            #print('sending', message)
-            self.sock.sendall(self.rsa_encrypt(message.encode('UTF-8')))
+            print('sending', message)
+            #self.sock.sendall(self.rsa_encrypt(message.encode('UTF-8')))
+            self.sock.sendall(self.aes.encrypt(message.encode('UTF-8')))
         except ConnectionError:
             print('Unable to send <<{}>> to {}'.format(message, self.ip))
 

