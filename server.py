@@ -36,7 +36,7 @@ class AESCipher(object):
         self.key = hashlib.sha256(key.encode()).digest()
 
     def encrypt(self, raw):
-        raw = pad(raw, self.bs)
+        raw = self.pad(raw, self.bs)
         iv = Random.new().read(AES.block_size)
         cipher = AES.new(self.key, AES.MODE_CBC, iv)
         return base64.b64encode(iv + cipher.encrypt(raw))
@@ -45,7 +45,15 @@ class AESCipher(object):
         enc = base64.b64decode(enc)
         iv = enc[:AES.block_size]
         cipher = AES.new(self.key, AES.MODE_CBC, iv)
-        return unpad(cipher.decrypt(enc[AES.block_size:]), self.bs).decode('utf-8')
+        return self.unpad(cipher.decrypt(enc[AES.block_size:]), self.bs).decode('utf-8')
+
+    def pad(self, mess, bs):
+        length = 16 - (len(mess) % 16)
+        mess += bytes([length]) * length
+        return mess
+
+    def unpad(self, mess, bs):
+        return mess[:-mess[-1]]
 
 
 class Commands:
