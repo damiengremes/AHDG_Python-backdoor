@@ -119,8 +119,12 @@ class Commands:
 
     def resources(self):
         # Retrieving CPU usage data
-        cpu = 'Processor has {} cores ({} threads). Current frequency at {}(out of {})\n'.format(
-            psutil.cpu_count(logical=False), psutil.cpu_count(), psutil.cpu_freq().current, psutil.cpu_freq().max)
+        try:
+            cpu = 'Processor has {} cores ({} threads). Current frequency at {}(out of {})\n'.format(
+                psutil.cpu_count(logical=False), psutil.cpu_count(), psutil.cpu_freq().current, psutil.cpu_freq().max)
+        except AttributeError:
+            cpu = 'Processor has {} cores ({} threads). Can\'t estimate cpu frequency)\n'.format(
+                psutil.cpu_count(logical=False), psutil.cpu_count())
         # Retrieving RAM usage data
         ram = 'RAM used : {}% ({} out of {}\n'.format(psutil.virtual_memory().percent, psutil.virtual_memory().used,
                                                       psutil.virtual_memory().total)
