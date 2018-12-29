@@ -126,8 +126,8 @@ class Commands:
             cpu = 'Processor has {} cores ({} threads). Can\'t estimate cpu frequency)\n'.format(
                 psutil.cpu_count(logical=False), psutil.cpu_count())
         # Retrieving RAM usage data
-        ram = 'RAM used : {}% ({} out of {}\n'.format(psutil.virtual_memory().percent, psutil.virtual_memory().used,
-                                                      psutil.virtual_memory().total)
+        ram = 'RAM used : {}% ({} out of {})\n'.format(psutil.virtual_memory().percent, psutil.virtual_memory().used,
+                                                       psutil.virtual_memory().total)
         # Retrieving Disk usage data
         diskarray = []
         for disks in psutil.disk_partitions():
@@ -185,7 +185,6 @@ class InThread(threading.Thread):
         again = True
         while again:
             msg = aes.decrypt(conn.recv(1024))
-            print(msg)
             if msg == 'exit':
                 again = False
                 cons.send(msg)
@@ -193,7 +192,6 @@ class InThread(threading.Thread):
                 comm_again = True
                 while comm_again:
                     command = aes.decrypt(conn.recv(1024))
-                    print(command)
                     if command == '':
                         pass
                     elif command == 'exit':
@@ -252,7 +250,6 @@ class OutThread(threading.Thread):
 
     def send(self, message):
         try:
-            print('sending', message)
             self.sock.sendall(self.aes.encrypt(message.encode('UTF-8')))
         except ConnectionError:
             self.stop()
